@@ -1,0 +1,23 @@
+library(gtable)
+library(scales)
+library(lazyeval)
+library(tibble)
+library(forecast)
+source("https://raw.githubusercontent.com/ellisp/forecast/dev/R/hybridf.R") 
+
+fc <- hybridf(uni_train$power)
+#graphics.off()
+par(mfrow = c(4, 1), bty = "l")
+plot(fc)
+plot(fc$fc_ets)
+plot(fc$fc_aa)
+#plot(stlf(uni_train$power))
+
+
+fctrend <- hybridf(FlowusagetsSTl$time.series[,2]+FlowusagetsSTl$time.series[,1])
+par(mfrow = c(4, 1), bty = "l")
+plot(fctrend)
+plot(fctrend$fc_ets)
+plot(fctrend$fc_aa)
+plot(stlf(FlowusagetsSTl$time.series[,2]+FlowusagetsSTl$time.series[,1]))
+plot(fc$model$mod2)
