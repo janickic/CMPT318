@@ -48,18 +48,25 @@ formatMhsmm <- function(data){
 }
 
 #loading data
-dataset <- read_csv("YOUR LOCAL DIRECTORY HERE",header=TRUE)
+dataset <- read_csv("C:\Users\Evan Chisholm\Desktop\CMPT318\train.txt",header=TRUE)
+gap <- dataset$Global_active_power
+gap <- gap[!is.na(gap)]
 
-train <- formatMhsmm(data.frame(dataset$Global_active_power))
+minsInWeek <- 7*1440 #3 weeks, 7 days each, 1440 minutes in a day
+cutoff <- minsInWeek
+cutoff2 <- cutoff+ 0.2*minsInWeek
+
+train <- formatMhsmm(data.frame(gap[1:cutoff]))
+test <- formatMhsmm(data.frame(gap[cutoff:cutoff2]))
 #day subset
 
-traindayform <- formatMhsmm(data.frame(train$x[1:5000]))
+traindayform <- formatMhsmm(data.frame(train$x))
 
-#testdayform <- formatMhsmm(data.frame(test$Global_active_power[1:1000]))
+testdayform <- formatMhsmm(data.frame(test$x))
 
 #end of data
-# 4 states HMM    
-k=6
+# 5 states HMM    
+k=5
 #init probabilities
 init <- rep(1/k, k)
 
@@ -67,11 +74,11 @@ init <- rep(1/k, k)
 P <- matrix(rep(1/k, k*k), nrow = k)
 
 #emission matrix:  here I used a Gaussian distribution, replace muEst and sigmaEst by your initial estimates of mean and variance
-b <- list(mu = c(1,4), sigma = c(2,1)) 
+b <- list(mu = c(0.85,3.426), sigma = c(2,1)) 
 
 #starting model for EM
 startmodel <- hmmspec(init = init, trans = P, parms.emis = b, dens.emis = dnorm.hsmm)
-startmodel
+
 #EM algorithm fits an HMM to the data
 hmm <- hmmfit(traindayform$x, startmodel , mstep = mstep.norm,maxit = 200)
 
@@ -81,11 +88,15 @@ plot(hmm$loglik, type="b", ylab="log-likelihood", xlab="Iteration")
 
 #testhmm1 <- formatMhsmm(test)
 yhat1 <- predict (hmm,traindayform$x)
-#yhat2 <- predict (hmm,testdayform$x)
+yhat2 <- predict (hmm,testdayform$x)
 #modelbased <- predict(startmodel,train,method="smoothed" )
 #plot(modelbased)
-
+addStates(yhat1$s)
 plot(yhat1)
-#addstates(yhat1$s)
+
+
 #plot(yhat2)
-#addstates(yhat2$s)
+#addStates(yhat2$s)
+
+yhat1$loglik
+yhat2$loglik
