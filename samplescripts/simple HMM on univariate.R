@@ -52,12 +52,19 @@ dataset <- read_csv("C:\Users\Evan Chisholm\Desktop\CMPT318\train.txt",header=TR
 gap <- dataset$Global_active_power
 gap <- gap[!is.na(gap)]
 
-minsInWeek <- 7*1440 #3 weeks, 7 days each, 1440 minutes in a day
-cutoff <- minsInWeek
-cutoff2 <- cutoff+ 0.2*minsInWeek
+minInDay <- 24*60
+minInWeek <- 7*minInDay
+minInMonth <- 30*minInDay #roughly
+minInSeason <- 3*minInMonth 
 
-train <- formatMhsmm(data.frame(gap[1:cutoff]))
-test <- formatMhsmm(data.frame(gap[cutoff:cutoff2]))
+train_start <- 2*minInSeason
+train_end <- 3*minInSeason
+test_start <- train_end + 1
+test_end <- test_start + minInDay
+
+
+train <- formatMhsmm(data.frame(gap[train_start:train_end]))
+test <- formatMhsmm(data.frame(gap[test_start:test_end]))
 #day subset
 
 traindayform <- formatMhsmm(data.frame(train$x))
@@ -74,7 +81,7 @@ init <- rep(1/k, k)
 P <- matrix(rep(1/k, k*k), nrow = k)
 
 #emission matrix:  here I used a Gaussian distribution, replace muEst and sigmaEst by your initial estimates of mean and variance
-b <- list(mu = c(0.85,3.426), sigma = c(2,1)) 
+b <- list(mu = c(0.29, 0.62,1.46,2.56,4.31), sigma = c(2,1, 0.5, 0.25, 0.125)) 
 
 #starting model for EM
 startmodel <- hmmspec(init = init, trans = P, parms.emis = b, dens.emis = dnorm.hsmm)
