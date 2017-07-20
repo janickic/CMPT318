@@ -87,14 +87,13 @@ summary(hmm)
 plot(hmm$loglik, type="b", ylab="log-likelihood", xlab="Iteration")
 
 # divide training data into sequences that are each a day in length.
-# sequences could be any length. I'm not really sure how to choose the idea sequence length tbh
+# sequences could be any length. I'm not really sure how to choose the ideal sequence length tbh
 # Note: the last sequence may not be a full day in length
 # Snippet taken from here: https://stackoverflow.com/questions/3318333/split-a-vector-into-chunks-in-r
 minutesPerDay <- 1440
 trainSequences <- split(trainFormattedData$x, ceiling(seq_along(trainFormattedData$x)/minutesPerDay))
 
 # Create a range of normal log-likelihood using training data seqeunces defined by min/max loglikelihood variables
-# Initialize min/max to dumb values that will never happen
 for (sequence in trainSequences) {
   # the last sequence in trainSequences may be less than a day (because the data points don't divide perfectly into days)
   # This ensures such a sequence won't be tested
