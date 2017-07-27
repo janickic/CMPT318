@@ -86,6 +86,9 @@ summary(hmm)
 # the iteration the log-likelihood plateaus is where we could stop the algorithm (i.e. set maxit of hmmfit() to that value)
 plot(hmm$loglik, type="b", ylab="log-likelihood", xlab="Iteration")
 
+
+#-------------Collective Anomaly Detection Approach Based On Log-Likelihood---------------------
+
 # divide training data into sequences that are each a day in length.
 # sequences could be any length. I'm not really sure how to choose the ideal sequence length tbh
 # Note: the last sequence may not be a full day in length
@@ -124,3 +127,26 @@ for (sequence in testSequences) {
     }
   }
 }
+
+
+
+#-----------Point Anomaly Detection------------------------------
+# The general idea here is to look at each point individually, and compare it to an expected value.
+# Here, the expected value is determined by the most probable state sequence. 
+# You look at the most probable state assigned to a data point (in predict()), and find that state's output 
+# emission mean (specified in the HMM). This mean represents an expected normal value for the given state
+threshold = 2
+anomalyPointCount = 0
+yhat <- predict(hmm, testFormattedData$x)
+for (i in 1:length(yhat$s)) {
+  observationState <- yhat$s[i]
+  observationStateMean <- hmm$model$parms.emission$mu[observationState]
+  #This is the same as the test data point
+  observationDataPoint <- yhat$x[i]
+  if (abs(observationDataPoint - observationStateMean) > threshold) {
+    anomalyPointCount = anomalyPointCount + 1
+  }
+}
+anomalyPercentage = 100 * (anomalyPointCount/length(testFormattedData$x))
+cat("Anomaly Percentage: ", anomalyPercentage, "%")
+cat("Anomaly Count: ", anomalyPointCount)
