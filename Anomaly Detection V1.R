@@ -1,7 +1,8 @@
 library(mhsmm)
 library(readr)
 
-#declaring formatMhsmm
+#--------------Function Declarations-------------------------------
+# declaring formatMhsmm from https://stackoverflow.com/questions/21682619/mhsmm-package-in-r-input-format
 formatMhsmm <- function(data){
   
   nb.sequences = nrow(data)
@@ -47,6 +48,11 @@ formatMhsmm <- function(data){
   return(train)
 }
 
+
+
+
+
+#-------------Data and HMM Initialization---------------------------------
 # load Training Data (only using Global Active Power), 
 # delete entries that are not available, 
 # and format the data for input to mhsmm library
@@ -61,18 +67,25 @@ testGlobalActivePower <- testDataset$Global_active_power
 testGlobalActivePower <- testGlobalActivePower[!is.na(testGlobalActivePower)]
 testFormattedData <- formatMhsmm(data.frame(testGlobalActivePower))
 
-# specify initial HMM parameter values
-# values were determined from analysis of data set
-# These are currently set to whatever values Evan was using in his analysis
+# Specify initial HMM parameter values
+# Determined from Evan and Heather's Analysis
 numStates <- 5
 initialStateProbabilities <- rep(1/numStates, numStates)
 transitionMatrix <- matrix(rep(1/numStates, numStates*numStates), nrow = numStates)
-emissionMatrix <- list(mu = c(0.85,3.426), sigma = c(2,1)) 
+
+#using k-means clustering, estimate initial mu and sigma values for the emission matrix
+kgap <- kmeans(trainGlobalActivePower,5,iter.max=10)
+muinit <- kgap$centers
+varinit = numeric(numStates)
+for (i in 1:numStates){
+  varinit[i] <- kgap$withinss[i]/(kgap$size[i]-1)
+}
+emissionMatrix <- list(mu = muinit, sigma = varinit) 
 
 # create a starting model with initial parameters before performing Expectation Maximization algorithm (training)
-startmodel <- hmmspec(init = initialStateProbabilities, 
-                      trans = transitionMatrix, 
-                      parms.emis = emissionMatrix, 
+startmodel <- hmmspec(init = initialStateProbabilities,
+                      trans = transitionMatrix,
+                      parms.emis = emissionMatrix,
                       dens.emis = dnorm.hsmm)
 
 # perform Expectation Maximization to obtain a trained HMM model
@@ -87,46 +100,66 @@ summary(hmm)
 plot(hmm$loglik, type="b", ylab="log-likelihood", xlab="Iteration")
 
 
+
+
+
 #-------------Collective Anomaly Detection Approach Based On Log-Likelihood---------------------
-
-# divide training data into sequences that are each a day in length.
-# sequences could be any length. I'm not really sure how to choose the ideal sequence length tbh
-# Note: the last sequence may not be a full day in length
+# divide training data into sequences that are each a given length.
+# Note: the last sequence may not be a full sequenceSize in length
 # Snippet taken from here: https://stackoverflow.com/questions/3318333/split-a-vector-into-chunks-in-r
-minutesPerDay <- 1440
-trainSequences <- split(trainFormattedData$x, ceiling(seq_along(trainFormattedData$x)/minutesPerDay))
-
-# Create a range of normal log-likelihood using training data seqeunces defined by min/max loglikelihood variables
-for (sequence in trainSequences) {
-  # the last sequence in trainSequences may be less than a day (because the data points don't divide perfectly into days)
-  # This ensures such a sequence won't be tested
-  # There are probably better ways to deal with this issue, but this will do for now.
-  if (length(sequence) == minutesPerDay) {
-    yhat <- predict (hmm, sequence)
-    if (!exists("minLogLikelihood") || yhat$loglik < minLogLikelihood) {
-      minLogLikelihood = yhat$loglik
-    }
-    if (!exists("maxLogLikelihood") || yhat$loglik > maxLogLikelihood) {
-      maxLogLikelihood = yhat$loglik
-    }
-  }
+sequenceSize <- 5
+trainSequences <- split(trainFormattedData$x, ceiling(seq_along(trainFormattedData$x)/sequenceSize))
+# the last sequence in trainSequences may be less than sequenceSize (because the data points don't divide perfectly by sequenceSize)
+# This ensures such a sequence won't be tested
+# There are probably better ways to deal with this issue, but this will do for now.
+validTrainSequencesCount = if (length(trainSequences[[length(trainSequences)]]) == sequenceSize) length(trainSequences) else (length(trainSequences) - 1)
+trainLogLikelihoods <- numeric(validTrainSequencesCount)
+# Create a range of normal log-likelihood using training data sequences defined by min/max loglikelihood variables
+for (i in 1:validTrainSequencesCount) {
+  sequence <- trainSequences[[i]]
+  yhat <- predict (hmm, sequence)
+  trainLogLikelihoods[i] <- yhat$loglik
 }
 
-# Divide test data into sequences that are each a day in length
+# Use the 1.5 x InterQuartile Range Rule for Outliers to create a range of normal log-likelihood
+# Description of the rule: http://www.purplemath.com/modules/boxwhisk3.htm
+# Note: This is probably not a very good way to do this, because often the range of normal 
+# log-likelihood ends up exceeding the minimum or maximum log-likelihood values
+# Ideally, we would use a validation data set to analyse how effective our range of normal log-likelihood is,
+# and adjust our range until it effectively captures anomalies.
+quartiles <- fivenum(trainLogLikelihoods)
+quartile1Index = 2
+quartile3Index = 4
+interQuartileRange = quartiles[quartile3Index] - quartiles[quartile1Index]
+minLogLikelihood <- quartiles[quartile1Index] - (1.5 * interQuartileRange)
+maxLogLikelihood <- quartiles[quartile3Index] + (1.5 * interQuartileRange)
+
+# Divide test data into sequences that are each a sequenceSize in length
 # IMPORTANT: train and test sequences must be the same length (unless their log-likelihoods are scaled)
-testSequences <- split(testFormattedData$x, ceiling(seq_along(testFormattedData$x)/minutesPerDay))
+testSequences <- split(testFormattedData$x, ceiling(seq_along(testFormattedData$x)/sequenceSize))
 
 # Identify Anomalies
-# Calculate log likelihood of test sequences. Any sequence outside the normal range is an anomaly 
+# Calculate log-likelihood of test sequences. Any sequence outside the normal range is an anomaly 
+anomalyCollectiveCount <- 0
 for (sequence in testSequences) {
-  # similar to before, this ensures the last sequence (which may not be a day in length) won't be tested
-  if (length(sequence) == minutesPerDay) {
+  # similar to before, this ensures the last sequence (which may not be a sequenceSize in length) won't be tested
+  if (length(sequence) == sequenceSize) {
     yhat <- predict (hmm, sequence)
     if (yhat$loglik > maxLogLikelihood || yhat$loglik < minLogLikelihood) {
-      print("ANOMALY DETECTEDDDDD")
+      anomalyCollectiveCount = anomalyCollectiveCount + 1 
     }
   }
 }
+
+# Report Results
+# similar to before, the last sequence may not be sequenceSize in length, so we may disclude it
+validTestSequenceCount <- if (length(testSequences[[length(testSequences)]]) == sequenceSize) length(testSequences) else (length(testSequences) - 1) 
+anomalyCollectivePercent <- 100 * (anomalyCollectiveCount / validTestSequenceCount)
+cat("Collective Anomaly Percentage: ", anomalyCollectivePercent, "%")
+cat("Collective Anomaly Count: ", anomalyCollectiveCount)
+
+
+
 
 
 
@@ -147,6 +180,8 @@ for (i in 1:length(yhat$s)) {
     anomalyPointCount = anomalyPointCount + 1
   }
 }
-anomalyPercentage = 100 * (anomalyPointCount/length(testFormattedData$x))
-cat("Anomaly Percentage: ", anomalyPercentage, "%")
-cat("Anomaly Count: ", anomalyPointCount)
+
+# Report Results
+anomalyPointPercentage = 100 * (anomalyPointCount/length(testFormattedData$x))
+cat("Point Anomaly Percentage: ", anomalyPointPercentage, "%")
+cat("Point Anomaly Count: ", anomalyPointCount)
