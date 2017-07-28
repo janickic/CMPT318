@@ -56,29 +56,29 @@ formatMhsmm <- function(data){
 # load Training Data (only using Global Active Power), 
 # delete entries that are not available, 
 # and format the data for input to mhsmm library
-#trainDataset <- read_csv("C:\\Users\\Trevor\\Google Drive\\School\\SFU\\Year 4\\Summer 2017\\CMPT 318\\Project\\CMPT318\\data\\train.txt")
-trainDataset <- read_csv("C:\\Users\\Evan Chisholm\\Desktop\\CMPT318\\train.txt")
+trainDataset <- read_csv("C:\\Users\\Trevor\\Google Drive\\School\\SFU\\Year 4\\Summer 2017\\CMPT 318\\Project\\CMPT318\\data\\train.txt")
+# trainDataset <- read_csv("C:\\Users\\Evan Chisholm\\Desktop\\CMPT318\\train.txt")
 trainGlobalActivePower <- trainDataset$Global_active_power
 trainGlobalActivePower <- trainGlobalActivePower[!is.na(trainGlobalActivePower)]
 
 testOnValidation <- TRUE
 #------ Creating Validation Set from Training Set ------------------------
 if(testOnValidation){
-#Take the last 10% of the dataset to use as a validation set
-lastTenPercentRange <- (0.9*length(trainGlobalActivePower)) : length(trainGlobalActivePower)
-validationGlobalActivePower <- trainGlobalActivePower[lastTenPercentRange]
-
-#truncate trainGlobalActivePower as we do not want to train on any data that is in the validation set
-trainRange <- 0.9*length(trainGlobalActivePower)
-trainGlobalActivePower <- trainGlobalActivePower[1:trainRange]
-
-#add noise to our validationGlobalActivePower and keep track of where noise was inserted for scoring purposes
-corrupt <- rbinom(length(validationGlobalActivePower), 1, 0.03) #determine an average of 3% of the data to replace with noise
-#we can reference this vector later to determing which values should have been detected as noise
-corrupt <- as.logical(corrupt)
-noise <- rnorm(sum(corrupt), 15, 3) #creates our noise values to insert by the normal distribution with a mean on 15, sd of 3, which should be pretty obvious
-validationGlobalActivePower[corrupt] <- validationGlobalActivePower[corrupt] + noise
-testFormattedData <- formatMhsmm(data.frame(validationGlobalActivePower))
+  #Take the last 10% of the dataset to use as a validation set
+  lastTenPercentRange <- (0.9*length(trainGlobalActivePower)) : length(trainGlobalActivePower)
+  validationGlobalActivePower <- trainGlobalActivePower[lastTenPercentRange]
+  
+  #truncate trainGlobalActivePower as we do not want to train on any data that is in the validation set
+  trainRange <- 0.9*length(trainGlobalActivePower)
+  trainGlobalActivePower <- trainGlobalActivePower[1:trainRange]
+  
+  #add noise to our validationGlobalActivePower and keep track of where noise was inserted for scoring purposes
+  corrupt <- rbinom(length(validationGlobalActivePower), 1, 0.03) #determine an average of 3% of the data to replace with noise
+  #we can reference this vector later to determing which values should have been detected as noise
+  corrupt <- as.logical(corrupt)
+  noise <- rnorm(sum(corrupt), 15, 3) #creates our noise values to insert by the normal distribution with a mean on 15, sd of 3, which should be pretty obvious
+  validationGlobalActivePower[corrupt] <- validationGlobalActivePower[corrupt] + noise
+  testFormattedData <- formatMhsmm(data.frame(validationGlobalActivePower))
 }
 
 trainFormattedData <- formatMhsmm(data.frame(trainGlobalActivePower))
@@ -86,11 +86,11 @@ trainFormattedData <- formatMhsmm(data.frame(trainGlobalActivePower))
 
 # do the same thing for Test data
 if(!testOnValidation){
-#testDataset <- read_csv("C:\\Users\\Trevor\\Google Drive\\School\\SFU\\Year 4\\Summer 2017\\CMPT 318\\Project\\CMPT318\\data\\test1.txt")
-testDataset <- read_csv("C:\\Users\\Evan Chisholm\\Desktop\\CMPT318\\train.txt")
-testGlobalActivePower <- testDataset$Global_active_power
-testGlobalActivePower <- testGlobalActivePower[!is.na(testGlobalActivePower)]
-testFormattedData <- formatMhsmm(data.frame(testGlobalActivePower))
+  testDataset <- read_csv("C:\\Users\\Trevor\\Google Drive\\School\\SFU\\Year 4\\Summer 2017\\CMPT 318\\Project\\CMPT318\\data\\test1.txt")
+  # testDataset <- read_csv("C:\\Users\\Evan Chisholm\\Desktop\\CMPT318\\train.txt")
+  testGlobalActivePower <- testDataset$Global_active_power
+  testGlobalActivePower <- testGlobalActivePower[!is.na(testGlobalActivePower)]
+  testFormattedData <- formatMhsmm(data.frame(testGlobalActivePower))
 }
 # Specify initial HMM parameter values
 # Determined from Evan and Heather's Analysis
@@ -134,12 +134,13 @@ plot(hmm$loglik, type="b", ylab="log-likelihood", xlab="Iteration")
 # Snippet taken from here: https://stackoverflow.com/questions/3318333/split-a-vector-into-chunks-in-r
 sequenceSize <- 5
 trainSequences <- split(trainFormattedData$x, ceiling(seq_along(trainFormattedData$x)/sequenceSize))
+
 # the last sequence in trainSequences may be less than sequenceSize (because the data points don't divide perfectly by sequenceSize)
 # This ensures such a sequence won't be tested
 # There are probably better ways to deal with this issue, but this will do for now.
 validTrainSequencesCount = if (length(trainSequences[[length(trainSequences)]]) == sequenceSize) length(trainSequences) else (length(trainSequences) - 1)
 trainLogLikelihoods <- numeric(validTrainSequencesCount)
-# Create a range of normal log-likelihood using training data sequences defined by min/max loglikelihood variables
+# Calculate log-likelihoods of train sequences
 for (i in 1:validTrainSequencesCount) {
   sequence <- trainSequences[[i]]
   yhat <- predict (hmm, sequence)
@@ -195,6 +196,7 @@ cat("Collective Anomaly Count: ", anomalyCollectiveCount)
 # emission mean (specified in the HMM). This mean represents an expected normal value for the given state
 threshold = 2
 anomalyPointCount = 0
+truePositiveCount = 0
 yhat <- predict(hmm, testFormattedData$x)
 for (i in 1:length(yhat$s)) {
   observationState <- yhat$s[i]
@@ -203,6 +205,11 @@ for (i in 1:length(yhat$s)) {
   observationDataPoint <- yhat$x[i]
   if (abs(observationDataPoint - observationStateMean) > threshold) {
     anomalyPointCount = anomalyPointCount + 1
+    if (testOnValidation) {
+      if (corrupt[i]) {
+        truePositiveCount = truePositiveCount + 1
+      }
+    }
   }
 }
 
@@ -210,3 +217,10 @@ for (i in 1:length(yhat$s)) {
 anomalyPointPercentage = 100 * (anomalyPointCount/length(testFormattedData$x))
 cat("Point Anomaly Percentage: ", anomalyPointPercentage, "%")
 cat("Point Anomaly Count: ", anomalyPointCount)
+if (testOnValidation) {
+  precision <- 100 * (truePositiveCount / anomalyPointCount)
+  actualAnomalyCount <- sum(corrupt)
+  recall <- 100 * (truePositiveCount / actualAnomalyCount)
+  cat("Precision: ", precision, "%\n")
+  cat("Recall: ", recall, "%\n")
+}
