@@ -56,13 +56,13 @@ formatMhsmm <- function(data){
 # load Training Data (only using Global Active Power), 
 # delete entries that are not available, 
 # and format the data for input to mhsmm library
-trainDataset <- read_csv("C:\\Users\\Trevor\\Google Drive\\School\\SFU\\Year 4\\Summer 2017\\CMPT 318\\Project\\CMPT318\\data\\train.txt")
+trainDataset <- read_csv("/home/heather/Code/cmpt-318/train.txt")#"C:\\Users\\Trevor\\Google Drive\\School\\SFU\\Year 4\\Summer 2017\\CMPT 318\\Project\\CMPT318\\data\\train.txt")
 trainGlobalActivePower <- trainDataset$Global_active_power
 trainGlobalActivePower <- trainGlobalActivePower[!is.na(trainGlobalActivePower)]
 trainFormattedData <- formatMhsmm(data.frame(trainGlobalActivePower))
 
 # do the same thing for Test data
-testDataset <- read_csv("C:\\Users\\Trevor\\Google Drive\\School\\SFU\\Year 4\\Summer 2017\\CMPT 318\\Project\\CMPT318\\data\\test1.txt")
+testDataset <- read_csv("/home/heather/Code/cmpt-318/test2.txt")#"C:\\Users\\Trevor\\Google Drive\\School\\SFU\\Year 4\\Summer 2017\\CMPT 318\\Project\\CMPT318\\data\\test1.txt")
 testGlobalActivePower <- testDataset$Global_active_power
 testGlobalActivePower <- testGlobalActivePower[!is.na(testGlobalActivePower)]
 testFormattedData <- formatMhsmm(data.frame(testGlobalActivePower))
@@ -168,17 +168,33 @@ cat("Collective Anomaly Count: ", anomalyCollectiveCount)
 # Here, the expected value is determined by the most probable state sequence. 
 # You look at the most probable state assigned to a data point (in predict()), and find that state's output 
 # emission mean (specified in the HMM). This mean represents an expected normal value for the given state
+
 threshold = 2
 anomalyPointCount = 0
-yhat <- predict(hmm, testFormattedData$x)
-for (i in 1:length(yhat$s)) {
+yhat <- predict(hmm, testFormattedData$x,method="smoothed")
+for (i in 2:length(yhat$s)) {
   observationState <- yhat$s[i]
   observationStateMean <- hmm$model$parms.emission$mu[observationState]
   #This is the same as the test data point
   observationDataPoint <- yhat$x[i]
+  
+  stateConfidence = 0 #p(observationState|observations), confidence that our stated state is actually the state
+  for (prevState in 1:5){
+    posterior = yhat$p[i-1,prevState] #the posterior distribution of the previous state
+    transprob = hmm$model$transition[observationState,prevState] #possibility for state j given previous state
+    stateConfidence = stateConfidence + posterior*transprob
+  }
+  
   if (abs(observationDataPoint - observationStateMean) > threshold) {
     anomalyPointCount = anomalyPointCount + 1
+    cat("1,")
   }
+  else{
+    cat("0,")
+  }
+  cat(round(stateConfidence,digits=2),"\n")
+  
+  
 }
 
 # Report Results
