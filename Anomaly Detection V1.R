@@ -56,8 +56,9 @@ formatMhsmm <- function(data){
 # load Training Data (only using Global Active Power), 
 # delete entries that are not available, 
 # and format the data for input to mhsmm library
-trainDataset <- read_csv("C:\\Users\\Trevor\\Google Drive\\School\\SFU\\Year 4\\Summer 2017\\CMPT 318\\Project\\CMPT318\\data\\train.txt")
+#trainDataset <- read_csv("C:\\Users\\Trevor\\Google Drive\\School\\SFU\\Year 4\\Summer 2017\\CMPT 318\\Project\\CMPT318\\data\\train.txt")
 # trainDataset <- read_csv("C:\\Users\\Evan Chisholm\\Desktop\\CMPT318\\train.txt")
+trainDataset <-read_csv("/home/heather/Code/cmpt-318/train.txt")
 trainGlobalActivePower <- trainDataset$Global_active_power
 trainGlobalActivePower <- trainGlobalActivePower[!is.na(trainGlobalActivePower)]
 
@@ -86,8 +87,9 @@ trainFormattedData <- formatMhsmm(data.frame(trainGlobalActivePower))
 
 # do the same thing for Test data
 if(!testOnValidation){
-  testDataset <- read_csv("C:\\Users\\Trevor\\Google Drive\\School\\SFU\\Year 4\\Summer 2017\\CMPT 318\\Project\\CMPT318\\data\\test1.txt")
+  #testDataset <- read_csv("C:\\Users\\Trevor\\Google Drive\\School\\SFU\\Year 4\\Summer 2017\\CMPT 318\\Project\\CMPT318\\data\\test1.txt")
   # testDataset <- read_csv("C:\\Users\\Evan Chisholm\\Desktop\\CMPT318\\train.txt")
+  trainDataset <-read_csv("/home/heather/Code/cmpt-318/test2.txt")
   testGlobalActivePower <- testDataset$Global_active_power
   testGlobalActivePower <- testGlobalActivePower[!is.na(testGlobalActivePower)]
   testFormattedData <- formatMhsmm(data.frame(testGlobalActivePower))
@@ -194,33 +196,64 @@ cat("Collective Anomaly Count: ", anomalyCollectiveCount)
 # Here, the expected value is determined by the most probable state sequence. 
 # You look at the most probable state assigned to a data point (in predict()), and find that state's output 
 # emission mean (specified in the HMM). This mean represents an expected normal value for the given state
-threshold = 2
-anomalyPointCount = 0
-truePositiveCount = 0
-yhat <- predict(hmm, testFormattedData$x)
-for (i in 1:length(yhat$s)) {
-  observationState <- yhat$s[i]
-  observationStateMean <- hmm$model$parms.emission$mu[observationState]
-  #This is the same as the test data point
-  observationDataPoint <- yhat$x[i]
-  if (abs(observationDataPoint - observationStateMean) > threshold) {
-    anomalyPointCount = anomalyPointCount + 1
-    if (testOnValidation) {
-      if (corrupt[i]) {
-        truePositiveCount = truePositiveCount + 1
-      }
-    }
-  }
-}
+pointdetection_outputfilenames=c("/home/heather/Code/cmpt-318/point_threshold_0point5.txt",
+                                 "/home/heather/Code/cmpt-318/point_threshold_0point75.txt",
+                                 "/home/heather/Code/cmpt-318/point_threshold_1.txt",
+                                 "/home/heather/Code/cmpt-318/point_threshold_1point25.txt",
+                                 "/home/heather/Code/cmpt-318/point_threshold_1point5.txt",
+                                 "/home/heather/Code/cmpt-318/point_threshold_2.txt")
+thresholds=c(0.5,0.75,1,1.25,1.5,2)
 
-# Report Results
-anomalyPointPercentage = 100 * (anomalyPointCount/length(testFormattedData$x))
-cat("Point Anomaly Percentage: ", anomalyPointPercentage, "%")
-cat("Point Anomaly Count: ", anomalyPointCount)
-if (testOnValidation) {
-  precision <- 100 * (truePositiveCount / anomalyPointCount)
-  actualAnomalyCount <- sum(corrupt)
-  recall <- 100 * (truePositiveCount / actualAnomalyCount)
-  cat("Precision: ", precision, "%\n")
-  cat("Recall: ", recall, "%\n")
+for (threshrun in 1:6){
+  threshold=thresholds[threshrun]
+  sink(pointdetection_outputfilenames[threshrun])
+  anomalyPointCount = 0
+  truePositiveCount = 0
+  yhat <- predict(hmm, testFormattedData$x,method="smoothed")
+  for (i in 1:length(yhat$s)) {
+    observationState <- yhat$s[i]
+    observationStateMean <- hmm$model$parms.emission$mu[observationState]
+    #This is the same as the test data point
+    observationDataPoint <- yhat$x[i]
+    
+    #We calculate the probability that our observationState matches the true state
+    #
+    stateConfidence = 0 #p(observationState|observations), confidence that our stated state is actually the state
+    for (prevState in 1:5){
+      posterior = yhat$p[i-1,prevState] #the posterior distribution of the previous state
+      transprob = hmm$model$transition[observationState,prevState] #possibility for state j given previous state
+      stateConfidence = stateConfidence + posterior*transprob
+    }
+    
+    
+    if (abs(observationDataPoint - observationStateMean) > threshold) {
+      anomalyPointCount = anomalyPointCount + 1
+      if (testOnValidation) {
+        if (corrupt[i]) {
+          truePositiveCount = truePositiveCount + 1
+        }
+      }
+      cat("1,")
+    }
+    else{
+      cat("0,")
+    }
+    if (i==1) {
+      stateConfidence=0
+    }
+    cat(round(stateConfidence,digits=2),"\n")
+  }
+  sink()
+  
+  # Report Results
+  anomalyPointPercentage = 100 * (anomalyPointCount/length(testFormattedData$x))
+  cat("Point Anomaly Percentage: ", anomalyPointPercentage, "%")
+  cat("Point Anomaly Count: ", anomalyPointCount)
+  if (testOnValidation) {
+    precision <- 100 * (truePositiveCount / anomalyPointCount)
+    actualAnomalyCount <- sum(corrupt)
+    recall <- 100 * (truePositiveCount / actualAnomalyCount)
+    cat("Precision: ", precision, "%\n")
+    cat("Recall: ", recall, "%\n")
+  }
 }
