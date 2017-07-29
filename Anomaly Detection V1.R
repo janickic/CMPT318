@@ -48,6 +48,32 @@ formatMhsmm <- function(data){
   return(train)
 }
 
+detectPointAnomalies <- function(hmm, testData, threshold, testOnValidation, corrupt) {
+  anomalyPointCount = 0
+  truePositiveCount = 0
+  yhat <- predict(hmm, testData)
+  for (i in 1:length(yhat$s)) {
+    observationState <- yhat$s[i]
+    observationStateMean <- hmm$model$parms.emission$mu[observationState]
+    #This is the same as the test data point
+    observationDataPoint <- yhat$x[i]
+    if (abs(observationDataPoint - observationStateMean) > threshold) {
+      anomalyPointCount = anomalyPointCount + 1
+      if (testOnValidation) {
+        if (corrupt[i]) {
+          truePositiveCount = truePositiveCount + 1
+        }
+      }
+    }
+  }
+  return(list(anomalyPointCount, truePositiveCount))
+}
+
+# Snippet taken from here: https://stackoverflow.com/questions/3318333/split-a-vector-into-chunks-in-r
+splitVector <- function(vector, sequenceSize) {
+  return(split(vector, ceiling(seq_along(vector)/sequenceSize)))
+}
+
 
 
 
@@ -131,9 +157,8 @@ plot(hmm$loglik, type="b", ylab="log-likelihood", xlab="Iteration")
 #-------------Collective Anomaly Detection Approach Based On Log-Likelihood---------------------
 # divide training data into sequences that are each a given length.
 # Note: the last sequence may not be a full sequenceSize in length
-# Snippet taken from here: https://stackoverflow.com/questions/3318333/split-a-vector-into-chunks-in-r
 sequenceSize <- 5
-trainSequences <- split(trainFormattedData$x, ceiling(seq_along(trainFormattedData$x)/sequenceSize))
+trainSequences <- splitVector(trainFormattedData$x, sequenceSize)
 
 # the last sequence in trainSequences may be less than sequenceSize (because the data points don't divide perfectly by sequenceSize)
 # This ensures such a sequence won't be tested
@@ -153,26 +178,54 @@ for (i in 1:validTrainSequencesCount) {
 # log-likelihood ends up exceeding the minimum or maximum log-likelihood values
 # Ideally, we would use a validation data set to analyse how effective our range of normal log-likelihood is,
 # and adjust our range until it effectively captures anomalies.
-quartiles <- fivenum(trainLogLikelihoods)
-quartile1Index = 2
-quartile3Index = 4
-interQuartileRange = quartiles[quartile3Index] - quartiles[quartile1Index]
-minLogLikelihood <- quartiles[quartile1Index] - (1.5 * interQuartileRange)
-maxLogLikelihood <- quartiles[quartile3Index] + (1.5 * interQuartileRange)
+# quartiles <- fivenum(trainLogLikelihoods)
+# quartile1Index = 2
+# quartile3Index = 4
+# interQuartileRange = quartiles[quartile3Index] - quartiles[quartile1Index]
+# minLogLikelihood <- quartiles[quartile1Index] - (1.5 * interQuartileRange)
+# maxLogLikelihood <- quartiles[quartile3Index] + (1.5 * interQuartileRange)
+rangeWidth = 16
+trainLogLikelihoodsMedian <- median(trainLogLikelihoods)
+minLogLikelihood <- trainLogLikelihoodsMedian - rangeWidth
+maxLogLikelihood <- trainLogLikelihoodsMedian + rangeWidth
 
 # Divide test data into sequences that are each a sequenceSize in length
 # IMPORTANT: train and test sequences must be the same length (unless their log-likelihoods are scaled)
-testSequences <- split(testFormattedData$x, ceiling(seq_along(testFormattedData$x)/sequenceSize))
+testSequences <- splitVector(testFormattedData$x, sequenceSize)
 
+if (testOnValidation) {
+  corruptSequences <- splitVector(corrupt, sequenceSize)
+}
+
+collectiveAnomalyThreshold <- 1
+# there must be at least this many point anomalies in a given collective anomaly for it to be considered valid
+validCollectiveAnomalyRatio <- .2
+truePositiveCollectiveAnomalyCount <- 0
+actualCollectiveAnomalyCount <- 0
 # Identify Anomalies
 # Calculate log-likelihood of test sequences. Any sequence outside the normal range is an anomaly 
 anomalyCollectiveCount <- 0
-for (sequence in testSequences) {
+for (i in 1:length(testSequences)) {
+  sequence <- testSequences[[i]]
   # similar to before, this ensures the last sequence (which may not be a sequenceSize in length) won't be tested
   if (length(sequence) == sequenceSize) {
     yhat <- predict (hmm, sequence)
-    if (yhat$loglik > maxLogLikelihood || yhat$loglik < minLogLikelihood) {
+    isAnomaly <- yhat$loglik > maxLogLikelihood || yhat$loglik < minLogLikelihood
+    if (isAnomaly) {
       anomalyCollectiveCount = anomalyCollectiveCount + 1 
+    }
+    if (testOnValidation) {
+      # TODO: change corrupt to subsequences
+      returnValue <- detectPointAnomalies(hmm, sequence, collectiveAnomalyThreshold, testOnValidation, corruptSequences[[i]])
+      truePointAnomaliesInSequence <- returnValue[[2]]
+      # This differs from isAnomaly, because it checks if a sequence SHOULD have been flagged by the algorithm as an anomaly or not
+      isActualAnomaly <- (truePointAnomaliesInSequence / sequenceSize) >= validCollectiveAnomalyRatio
+      if (isActualAnomaly) {
+        if (isAnomaly) {
+          truePositiveCollectiveAnomalyCount = truePositiveCollectiveAnomalyCount + 1  
+        }
+        actualCollectiveAnomalyCount = actualCollectiveAnomalyCount + 1
+      }
     }
   }
 }
@@ -183,7 +236,13 @@ validTestSequenceCount <- if (length(testSequences[[length(testSequences)]]) == 
 anomalyCollectivePercent <- 100 * (anomalyCollectiveCount / validTestSequenceCount)
 cat("Collective Anomaly Percentage: ", anomalyCollectivePercent, "%")
 cat("Collective Anomaly Count: ", anomalyCollectiveCount)
-
+if (testOnValidation) {
+  precision <- 100 * (truePositiveCollectiveAnomalyCount / anomalyCollectiveCount)
+  actualAnomalyCount <- sum(corrupt)
+  recall <- 100 * (truePositiveCollectiveAnomalyCount / actualCollectiveAnomalyCount)
+  cat("Precision: ", precision, "%\n")
+  cat("Recall: ", recall, "%\n")
+}
 
 
 
@@ -195,24 +254,9 @@ cat("Collective Anomaly Count: ", anomalyCollectiveCount)
 # You look at the most probable state assigned to a data point (in predict()), and find that state's output 
 # emission mean (specified in the HMM). This mean represents an expected normal value for the given state
 threshold = 2
-anomalyPointCount = 0
-truePositiveCount = 0
-yhat <- predict(hmm, testFormattedData$x)
-for (i in 1:length(yhat$s)) {
-  observationState <- yhat$s[i]
-  observationStateMean <- hmm$model$parms.emission$mu[observationState]
-  #This is the same as the test data point
-  observationDataPoint <- yhat$x[i]
-  if (abs(observationDataPoint - observationStateMean) > threshold) {
-    anomalyPointCount = anomalyPointCount + 1
-    if (testOnValidation) {
-      if (corrupt[i]) {
-        truePositiveCount = truePositiveCount + 1
-      }
-    }
-  }
-}
-
+returnValue <- detectPointAnomalies(hmm, testFormattedData$x, threshold, testOnValidation, corrupt)
+anomalyPointCount <- returnValue[[1]]
+truePositiveCount <- returnValue[[2]]
 # Report Results
 anomalyPointPercentage = 100 * (anomalyPointCount/length(testFormattedData$x))
 cat("Point Anomaly Percentage: ", anomalyPointPercentage, "%")
@@ -224,3 +268,4 @@ if (testOnValidation) {
   cat("Precision: ", precision, "%\n")
   cat("Recall: ", recall, "%\n")
 }
+
