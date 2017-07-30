@@ -182,6 +182,9 @@ plot(hmm$loglik, type="b", ylab="log-likelihood", xlab="Iteration")
 
 
 #-------------Collective Anomaly Detection Approach Based On Log-Likelihood---------------------
+# When true, if a sequence is identified as a collective anomaly, it will be run through point anomaly detection
+# The sequence will only be flagged as an anomaly if it has a certain percentage of point anomalies within it (ex: > 50%)
+usePointDetectionOnCollectiveAnomalies <- FALSE
 # When true, this will use the range of normal log-likelihoods specified in normalLogLikelihoodRanges
 # Rather than use the median of training log-likelihoods +- rangeWidth
 useManualNormalRange <- TRUE
@@ -250,14 +253,24 @@ for (collrun in 1:length(windowlengths)){
       yhat <- predict (hmm, sequence)
       isAnomaly <- yhat$loglik > maxLogLikelihood || yhat$loglik < minLogLikelihood
       if (isAnomaly) {
-        anomalyCollectiveCount = anomalyCollectiveCount + 1
-        cat("1,1\n")
+        if (usePointDetectionOnCollectiveAnomalies) {
+          returnValue <- detectPointAnomalies(hmm, sequence, collectiveAnomalyThreshold, FALSE, NULL, FALSE)
+          pointAnomaliesInSequence <- returnValue[[1]]
+          # This differs from isAnomaly, because it checks if a sequence SHOULD have been flagged by the algorithm as an anomaly or not
+          hasSufficientPointAnomalies <- (pointAnomaliesInSequence / sequenceSize) >= validCollectiveAnomalyRatio
+          if (hasSufficientPointAnomalies) {
+            anomalyCollectiveCount = anomalyCollectiveCount + 1
+            cat("1,1\n")
+          }
+        } else{
+          anomalyCollectiveCount = anomalyCollectiveCount + 1
+          cat("1,1\n")
+        }
       }
       else{
         cat ("0,0\n")
       }
       if (testOnValidation) {
-        # TODO: change corrupt to subsequences
         returnValue <- detectPointAnomalies(hmm, sequence, collectiveAnomalyThreshold, testOnValidation, corruptSequences[[i]], FALSE)
         truePointAnomaliesInSequence <- returnValue[[2]]
         # This differs from isAnomaly, because it checks if a sequence SHOULD have been flagged by the algorithm as an anomaly or not
