@@ -59,9 +59,8 @@ detectPointAnomalies <- function(hmm, testData, threshold, testOnValidation, cor
     observationDataPoint <- yhat$x[i]
     
     #We calculate the probability that our observationState matches the true state
-    #
     stateConfidence = 0 #p(observationState|observations), confidence that our stated state is actually the state
-    for (prevState in 1:5){
+    for (prevState in 1:hmm$model$J){
       posterior = yhat$p[i-1,prevState] #the posterior distribution of the previous state
       transprob = hmm$model$transition[observationState,prevState] #possibility for state j given previous state
       stateConfidence = stateConfidence + posterior*transprob
@@ -199,18 +198,8 @@ for (i in 1:validTrainSequencesCount) {
   trainLogLikelihoods[i] <- yhat$loglik
 }
 
-# Use the 1.5 x InterQuartile Range Rule for Outliers to create a range of normal log-likelihood
-# Description of the rule: http://www.purplemath.com/modules/boxwhisk3.htm
-# Note: This is probably not a very good way to do this, because often the range of normal 
-# log-likelihood ends up exceeding the minimum or maximum log-likelihood values
-# Ideally, we would use a validation data set to analyse how effective our range of normal log-likelihood is,
-# and adjust our range until it effectively captures anomalies.
-# quartiles <- fivenum(trainLogLikelihoods)
-# quartile1Index = 2
-# quartile3Index = 4
-# interQuartileRange = quartiles[quartile3Index] - quartiles[quartile1Index]
-# minLogLikelihood <- quartiles[quartile1Index] - (1.5 * interQuartileRange)
-# maxLogLikelihood <- quartiles[quartile3Index] + (1.5 * interQuartileRange)
+# We define a range of normal log-likelihood by centering the range on the median of the train data's log-likelihoods
+# then extend this range in an arbitrary direction (rangeWidth) depending on precision and recall results on the validation data set 
 rangeWidth = 16
 trainLogLikelihoodsMedian <- median(trainLogLikelihoods)
 minLogLikelihood <- trainLogLikelihoodsMedian - rangeWidth
@@ -224,6 +213,9 @@ if (testOnValidation) {
   corruptSequences <- splitVector(corrupt, sequenceSize)
 }
 
+# For collective anomaly detection, we retain the concept of "threshold". Here, it basically means that on average, we should detect 
+# collective anomalies that are made up of a certain percentage (validCollectiveAnomalyRatio) of point anomalies that satisfy the same
+# threshold in the context of point anomaly detection
 collectiveAnomalyThreshold <- 1
 # there must be at least this many point anomalies in a given collective anomaly for it to be considered valid
 validCollectiveAnomalyRatio <- .2
@@ -294,13 +286,13 @@ pointdetection_outputfilenames=c("/home/heather/Code/cmpt-318/point_threshold_0p
 #                                  "C:\\Users\\Trevor\\Google Drive\\School\\SFU\\Year 4\\Summer 2017\\CMPT 318\\Project\\CMPT318\\results\\point_threshold_2.txt")
 thresholds=c(0.5,0.75,1,1.25,1.5,2)
 
-for (threshrun in 1:6){
+for (threshrun in 1:length(thresholds)){
   threshold=thresholds[threshrun]
-  sink(pointdetection_outputfilenames[threshrun])
-  returnValue <- detectPointAnomalies(hmm, testFormattedData$x, threshold, testOnValidation, corrupt, TRUE)
+  # sink(pointdetection_outputfilenames[threshrun])
+  returnValue <- detectPointAnomalies(hmm, testFormattedData$x, threshold, testOnValidation, corrupt, FALSE)
   anomalyPointCount <- returnValue[[1]]
   truePositiveCount <- returnValue[[2]]
-  sink()
+  # sink()
   
   # Report Results
   anomalyPointPercentage = 100 * (anomalyPointCount/length(testFormattedData$x))
