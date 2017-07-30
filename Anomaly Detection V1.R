@@ -182,14 +182,21 @@ plot(hmm$loglik, type="b", ylab="log-likelihood", xlab="Iteration")
 
 
 #-------------Collective Anomaly Detection Approach Based On Log-Likelihood---------------------
-# divide training data into sequences that are each a given length.
-# Note: the last sequence may not be a full sequenceSize in length
+# When true, this will use the range of normal log-likelihoods specified in normalLogLikelihoodRanges
+# Rather than use the median of training log-likelihoods +- rangeWidth
+useManualNormalRange <- TRUE
+normalLogLikelihoodRanges <- list(
+  c(-28.12, -4.78),
+  c(-112.1, -10.97),
+  c(-175, -10),
+  c(-200, -9)
+)
 windowlengths=c(5,10,15,20)
 colldetection_outputfilenames=c("/home/heather/Code/cmpt-318/anom_window_5.txt",
                                 "/home/heather/Code/cmpt-318/anom_window_10.txt",
                                 "/home/heather/Code/cmpt-318/anom_window_15.txt",
                                 "/home/heather/Code/cmpt-318/anom_window_20.txt")
-for (collrun in 1:4){
+for (collrun in 1:length(windowlengths)){
   sequenceSize <- windowlengths[collrun]
   trainSequences <- splitVector(trainFormattedData$x, sequenceSize)
   sink(colldetection_outputfilenames[collrun])
@@ -198,20 +205,24 @@ for (collrun in 1:4){
   # This ensures such a sequence won't be tested
   # There are probably better ways to deal with this issue, but this will do for now.
   validTrainSequencesCount = if (length(trainSequences[[length(trainSequences)]]) == sequenceSize) length(trainSequences) else (length(trainSequences) - 1)
-  trainLogLikelihoods <- numeric(validTrainSequencesCount)
-  # Calculate log-likelihoods of train sequences
-  for (i in 1:validTrainSequencesCount) {
-    sequence <- trainSequences[[i]]
-    yhat <- predict (hmm, sequence)
-    trainLogLikelihoods[i] <- yhat$loglik
+  if (useManualNormalRange) {
+    minLogLikelihood <- normalLogLikelihoodRanges[[collrun]][1]
+    maxLogLikelihood <- normalLogLikelihoodRanges[[collrun]][2]
+  } else {
+    trainLogLikelihoods <- numeric(validTrainSequencesCount)
+    # Calculate log-likelihoods of train sequences
+    for (i in 1:validTrainSequencesCount) {
+      sequence <- trainSequences[[i]]
+      yhat <- predict (hmm, sequence)
+      trainLogLikelihoods[i] <- yhat$loglik
+    }
+    # We define a range of normal log-likelihood by centering the range on the median of the train data's log-likelihoods
+    # then extend this range in an arbitrary direction (rangeWidth) depending on precision and recall results on the validation data set 
+    rangeWidth = 16
+    trainLogLikelihoodsMedian <- median(trainLogLikelihoods)
+    minLogLikelihood <- trainLogLikelihoodsMedian - rangeWidth
+    maxLogLikelihood <- trainLogLikelihoodsMedian + rangeWidth
   }
-  
-  # We define a range of normal log-likelihood by centering the range on the median of the train data's log-likelihoods
-  # then extend this range in an arbitrary direction (rangeWidth) depending on precision and recall results on the validation data set 
-  rangeWidth = 16
-  trainLogLikelihoodsMedian <- median(trainLogLikelihoods)
-  minLogLikelihood <- trainLogLikelihoodsMedian - rangeWidth
-  maxLogLikelihood <- trainLogLikelihoodsMedian + rangeWidth
   
   # Divide test data into sequences that are each a sequenceSize in length
   # IMPORTANT: train and test sequences must be the same length (unless their log-likelihoods are scaled)
