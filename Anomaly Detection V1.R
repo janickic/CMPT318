@@ -288,11 +288,11 @@ thresholds=c(0.5,0.75,1,1.25,1.5,2)
 
 for (threshrun in 1:length(thresholds)){
   threshold=thresholds[threshrun]
-  # sink(pointdetection_outputfilenames[threshrun])
-  returnValue <- detectPointAnomalies(hmm, testFormattedData$x, threshold, testOnValidation, corrupt, FALSE)
+  sink(pointdetection_outputfilenames[threshrun])
+  returnValue <- detectPointAnomalies(hmm, testFormattedData$x, threshold, testOnValidation, corrupt, TRUE)
   anomalyPointCount <- returnValue[[1]]
   truePositiveCount <- returnValue[[2]]
-  # sink()
+  sink()
   
   # Report Results
   anomalyPointPercentage = 100 * (anomalyPointCount/length(testFormattedData$x))
