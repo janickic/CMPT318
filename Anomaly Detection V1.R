@@ -106,13 +106,15 @@ splitVector <- function(vector, sequenceSize) {
 # load Training Data (only using Global Active Power), 
 # delete entries that are not available, 
 # and format the data for input to mhsmm library
-trainDataset <- read_csv("C:\\Users\\Trevor\\Google Drive\\School\\SFU\\Year 4\\Summer 2017\\CMPT 318\\Project\\CMPT318\\data\\train.txt")
+#trainDataset <- read_csv("C:\\Users\\Trevor\\Google Drive\\School\\SFU\\Year 4\\Summer 2017\\CMPT 318\\Project\\CMPT318\\data\\train.txt")
 # trainDataset <- read_csv("C:\\Users\\Evan Chisholm\\Desktop\\CMPT318\\train.txt")
-# trainDataset <-read_csv("/home/heather/Code/cmpt-318/train.txt")
+ trainDataset <-read_csv("/home/heather/Code/cmpt-318/train.txt")
 trainGlobalActivePower <- trainDataset$Global_active_power
 trainGlobalActivePower <- trainGlobalActivePower[!is.na(trainGlobalActivePower)]
 
-testOnValidation <- TRUE
+trainFormattedData <- formatMhsmm(data.frame(trainGlobalActivePower))
+
+testOnValidation <- FALSE
 #------ Creating Validation Set from Training Set ------------------------
 if(testOnValidation){
   #Take the last 10% of the dataset to use as a validation set
@@ -132,14 +134,13 @@ if(testOnValidation){
   testFormattedData <- formatMhsmm(data.frame(validationGlobalActivePower))
 }
 
-trainFormattedData <- formatMhsmm(data.frame(trainGlobalActivePower))
 
 
-# do the same thing for Test data
+# do the same thing for TeQst data
 if(!testOnValidation){
-  testDataset <- read_csv("C:\\Users\\Trevor\\Google Drive\\School\\SFU\\Year 4\\Summer 2017\\CMPT 318\\Project\\CMPT318\\data\\test1.txt")
+  #testDataset <- read_csv("C:\\Users\\Trevor\\Google Drive\\School\\SFU\\Year 4\\Summer 2017\\CMPT 318\\Project\\CMPT318\\data\\test1.txt")
   # testDataset <- read_csv("C:\\Users\\Evan Chisholm\\Desktop\\CMPT318\\train.txt")
-  # trainDataset <-read_csv("/home/heather/Code/cmpt-318/test2.txt")
+  trainDataset <-read_csv("/home/heather/Code/cmpt-318/test1.txt")
   testGlobalActivePower <- testDataset$Global_active_power
   testGlobalActivePower <- testGlobalActivePower[!is.na(testGlobalActivePower)]
   testFormattedData <- formatMhsmm(data.frame(testGlobalActivePower))
@@ -183,84 +184,97 @@ plot(hmm$loglik, type="b", ylab="log-likelihood", xlab="Iteration")
 #-------------Collective Anomaly Detection Approach Based On Log-Likelihood---------------------
 # divide training data into sequences that are each a given length.
 # Note: the last sequence may not be a full sequenceSize in length
-sequenceSize <- 5
-trainSequences <- splitVector(trainFormattedData$x, sequenceSize)
-
-# the last sequence in trainSequences may be less than sequenceSize (because the data points don't divide perfectly by sequenceSize)
-# This ensures such a sequence won't be tested
-# There are probably better ways to deal with this issue, but this will do for now.
-validTrainSequencesCount = if (length(trainSequences[[length(trainSequences)]]) == sequenceSize) length(trainSequences) else (length(trainSequences) - 1)
-trainLogLikelihoods <- numeric(validTrainSequencesCount)
-# Calculate log-likelihoods of train sequences
-for (i in 1:validTrainSequencesCount) {
-  sequence <- trainSequences[[i]]
-  yhat <- predict (hmm, sequence)
-  trainLogLikelihoods[i] <- yhat$loglik
-}
-
-# We define a range of normal log-likelihood by centering the range on the median of the train data's log-likelihoods
-# then extend this range in an arbitrary direction (rangeWidth) depending on precision and recall results on the validation data set 
-rangeWidth = 16
-trainLogLikelihoodsMedian <- median(trainLogLikelihoods)
-minLogLikelihood <- trainLogLikelihoodsMedian - rangeWidth
-maxLogLikelihood <- trainLogLikelihoodsMedian + rangeWidth
-
-# Divide test data into sequences that are each a sequenceSize in length
-# IMPORTANT: train and test sequences must be the same length (unless their log-likelihoods are scaled)
-testSequences <- splitVector(testFormattedData$x, sequenceSize)
-
-if (testOnValidation) {
-  corruptSequences <- splitVector(corrupt, sequenceSize)
-}
-
-# For collective anomaly detection, we retain the concept of "threshold". Here, it basically means that on average, we should detect 
-# collective anomalies that are made up of a certain percentage (validCollectiveAnomalyRatio) of point anomalies that satisfy the same
-# threshold in the context of point anomaly detection
-collectiveAnomalyThreshold <- 1
-# there must be at least this many point anomalies in a given collective anomaly for it to be considered valid
-validCollectiveAnomalyRatio <- .2
-truePositiveCollectiveAnomalyCount <- 0
-actualCollectiveAnomalyCount <- 0
-# Identify Anomalies
-# Calculate log-likelihood of test sequences. Any sequence outside the normal range is an anomaly 
-anomalyCollectiveCount <- 0
-for (i in 1:length(testSequences)) {
-  sequence <- testSequences[[i]]
-  # similar to before, this ensures the last sequence (which may not be a sequenceSize in length) won't be tested
-  if (length(sequence) == sequenceSize) {
+windowlengths=c(5,10,15,20)
+colldetection_outputfilenames=c("/home/heather/Code/cmpt-318/anom_window_5.txt",
+                                "/home/heather/Code/cmpt-318/anom_window_10.txt",
+                                "/home/heather/Code/cmpt-318/anom_window_15.txt",
+                                "/home/heather/Code/cmpt-318/anom_window_20.txt")
+for (collrun in 1:4){
+  sequenceSize <- windowlengths[collrun]
+  trainSequences <- splitVector(trainFormattedData$x, sequenceSize)
+  sink(colldetection_outputfilenames[collrun])
+  
+  # the last sequence in trainSequences may be less than sequenceSize (because the data points don't divide perfectly by sequenceSize)
+  # This ensures such a sequence won't be tested
+  # There are probably better ways to deal with this issue, but this will do for now.
+  validTrainSequencesCount = if (length(trainSequences[[length(trainSequences)]]) == sequenceSize) length(trainSequences) else (length(trainSequences) - 1)
+  trainLogLikelihoods <- numeric(validTrainSequencesCount)
+  # Calculate log-likelihoods of train sequences
+  for (i in 1:validTrainSequencesCount) {
+    sequence <- trainSequences[[i]]
     yhat <- predict (hmm, sequence)
-    isAnomaly <- yhat$loglik > maxLogLikelihood || yhat$loglik < minLogLikelihood
-    if (isAnomaly) {
-      anomalyCollectiveCount = anomalyCollectiveCount + 1 
-    }
-    if (testOnValidation) {
-      # TODO: change corrupt to subsequences
-      returnValue <- detectPointAnomalies(hmm, sequence, collectiveAnomalyThreshold, testOnValidation, corruptSequences[[i]], FALSE)
-      truePointAnomaliesInSequence <- returnValue[[2]]
-      # This differs from isAnomaly, because it checks if a sequence SHOULD have been flagged by the algorithm as an anomaly or not
-      isActualAnomaly <- (truePointAnomaliesInSequence / sequenceSize) >= validCollectiveAnomalyRatio
-      if (isActualAnomaly) {
-        if (isAnomaly) {
-          truePositiveCollectiveAnomalyCount = truePositiveCollectiveAnomalyCount + 1  
+    trainLogLikelihoods[i] <- yhat$loglik
+  }
+  
+  # We define a range of normal log-likelihood by centering the range on the median of the train data's log-likelihoods
+  # then extend this range in an arbitrary direction (rangeWidth) depending on precision and recall results on the validation data set 
+  rangeWidth = 16
+  trainLogLikelihoodsMedian <- median(trainLogLikelihoods)
+  minLogLikelihood <- trainLogLikelihoodsMedian - rangeWidth
+  maxLogLikelihood <- trainLogLikelihoodsMedian + rangeWidth
+  
+  # Divide test data into sequences that are each a sequenceSize in length
+  # IMPORTANT: train and test sequences must be the same length (unless their log-likelihoods are scaled)
+  testSequences <- splitVector(testFormattedData$x, sequenceSize)
+  
+  if (testOnValidation) {
+    corruptSequences <- splitVector(corrupt, sequenceSize)
+  }
+  
+  # For collective anomaly detection, we retain the concept of "threshold". Here, it basically means that on average, we should detect 
+  # collective anomalies that are made up of a certain percentage (validCollectiveAnomalyRatio) of point anomalies that satisfy the same
+  # threshold in the context of point anomaly detection
+  collectiveAnomalyThreshold <- 1
+  # there must be at least this many point anomalies in a given collective anomaly for it to be considered valid
+  validCollectiveAnomalyRatio <- .2
+  truePositiveCollectiveAnomalyCount <- 0
+  actualCollectiveAnomalyCount <- 0
+  # Identify Anomalies
+  # Calculate log-likelihood of test sequences. Any sequence outside the normal range is an anomaly 
+  anomalyCollectiveCount <- 0
+  for (i in 1:length(testSequences)) {
+    sequence <- testSequences[[i]]
+    # similar to before, this ensures the last sequence (which may not be a sequenceSize in length) won't be tested
+    if (length(sequence) == sequenceSize) {
+      yhat <- predict (hmm, sequence)
+      isAnomaly <- yhat$loglik > maxLogLikelihood || yhat$loglik < minLogLikelihood
+      if (isAnomaly) {
+        anomalyCollectiveCount = anomalyCollectiveCount + 1
+        cat("1,1\n")
+      }
+      else{
+        cat ("0,0\n")
+      }
+      if (testOnValidation) {
+        # TODO: change corrupt to subsequences
+        returnValue <- detectPointAnomalies(hmm, sequence, collectiveAnomalyThreshold, testOnValidation, corruptSequences[[i]], FALSE)
+        truePointAnomaliesInSequence <- returnValue[[2]]
+        # This differs from isAnomaly, because it checks if a sequence SHOULD have been flagged by the algorithm as an anomaly or not
+        isActualAnomaly <- (truePointAnomaliesInSequence / sequenceSize) >= validCollectiveAnomalyRatio
+        if (isActualAnomaly) {
+          if (isAnomaly) {
+            truePositiveCollectiveAnomalyCount = truePositiveCollectiveAnomalyCount + 1  
+          }
+          actualCollectiveAnomalyCount = actualCollectiveAnomalyCount + 1
         }
-        actualCollectiveAnomalyCount = actualCollectiveAnomalyCount + 1
       }
     }
   }
-}
-
-# Report Results
-# similar to before, the last sequence may not be sequenceSize in length, so we may disclude it
-validTestSequenceCount <- if (length(testSequences[[length(testSequences)]]) == sequenceSize) length(testSequences) else (length(testSequences) - 1) 
-anomalyCollectivePercent <- 100 * (anomalyCollectiveCount / validTestSequenceCount)
-cat("Collective Anomaly Percentage: ", anomalyCollectivePercent, "%")
-cat("Collective Anomaly Count: ", anomalyCollectiveCount)
-if (testOnValidation) {
-  precision <- 100 * (truePositiveCollectiveAnomalyCount / anomalyCollectiveCount)
-  actualAnomalyCount <- sum(corrupt)
-  recall <- 100 * (truePositiveCollectiveAnomalyCount / actualCollectiveAnomalyCount)
-  cat("Precision: ", precision, "%\n")
-  cat("Recall: ", recall, "%\n")
+  sink()
+  
+  # Report Results
+  # similar to before, the last sequence may not be sequenceSize in length, so we may disclude it
+  validTestSequenceCount <- if (length(testSequences[[length(testSequences)]]) == sequenceSize) length(testSequences) else (length(testSequences) - 1) 
+  anomalyCollectivePercent <- 100 * (anomalyCollectiveCount / validTestSequenceCount)
+  cat("Collective Anomaly Percentage: ", anomalyCollectivePercent, "%")
+  cat("Collective Anomaly Count: ", anomalyCollectiveCount)
+  if (testOnValidation) {
+    precision <- 100 * (truePositiveCollectiveAnomalyCount / anomalyCollectiveCount)
+    actualAnomalyCount <- sum(corrupt)
+    recall <- 100 * (truePositiveCollectiveAnomalyCount / actualCollectiveAnomalyCount)
+    cat("Precision: ", precision, "%\n")
+    cat("Recall: ", recall, "%\n")
+  }
 }
 
 
