@@ -48,6 +48,7 @@ formatMhsmm <- function(data){
   return(train)
 }
 
+#declaring detectPointAnomalies for use in our anomaly point detection algorithm
 detectPointAnomalies <- function(hmm, testData, threshold, testOnValidation, corrupt, shouldOutputResults) {
   anomalyPointCount = 0
   truePositiveCount = 0
@@ -62,11 +63,11 @@ detectPointAnomalies <- function(hmm, testData, threshold, testOnValidation, cor
     stateConfidence = 0 #p(observationState|observations), confidence that our stated state is actually the state
     for (prevState in 1:hmm$model$J){
       posterior = yhat$p[i-1,prevState] #the posterior distribution of the previous state
-      transprob = hmm$model$transition[observationState,prevState] #possibility for state j given previous state
+      transprob = hmm$model$transition[observationState,prevState] #possibility for state observationState given previous state
       stateConfidence = stateConfidence + posterior*transprob
     }
     
-    
+    #If the distance between our observation and expected value is greater than the threshold, it is flagged as an anomaly
     if (abs(observationDataPoint - observationStateMean) > threshold) {
       anomalyPointCount = anomalyPointCount + 1
       if (testOnValidation) {
@@ -108,7 +109,7 @@ splitVector <- function(vector, sequenceSize) {
 # and format the data for input to mhsmm library
 #trainDataset <- read_csv("C:\\Users\\Trevor\\Google Drive\\School\\SFU\\Year 4\\Summer 2017\\CMPT 318\\Project\\CMPT318\\data\\train.txt")
 # trainDataset <- read_csv("C:\\Users\\Evan Chisholm\\Desktop\\CMPT318\\train.txt")
- trainDataset <-read_csv("/home/heather/Code/cmpt-318/train.txt")
+trainDataset <-read_csv("/home/heather/Code/cmpt-318/train.txt")
 trainGlobalActivePower <- trainDataset$Global_active_power
 trainGlobalActivePower <- trainGlobalActivePower[!is.na(trainGlobalActivePower)]
 
@@ -134,24 +135,25 @@ if(testOnValidation){
   testFormattedData <- formatMhsmm(data.frame(validationGlobalActivePower))
 }
 
-
-
-# do the same thing for TeQst data
+# do the same thing for Test data
 if(!testOnValidation){
   #testDataset <- read_csv("C:\\Users\\Trevor\\Google Drive\\School\\SFU\\Year 4\\Summer 2017\\CMPT 318\\Project\\CMPT318\\data\\test1.txt")
   # testDataset <- read_csv("C:\\Users\\Evan Chisholm\\Desktop\\CMPT318\\train.txt")
   trainDataset <-read_csv("/home/heather/Code/cmpt-318/test1.txt")
+  #trainDataset <-read_csv("/home/heather/Code/cmpt-318/test2.txt")
   testGlobalActivePower <- testDataset$Global_active_power
   testGlobalActivePower <- testGlobalActivePower[!is.na(testGlobalActivePower)]
   testFormattedData <- formatMhsmm(data.frame(testGlobalActivePower))
 }
+
+
 # Specify initial HMM parameter values
 # Determined from Evan and Heather's Analysis
 numStates <- 5
 initialStateProbabilities <- rep(1/numStates, numStates)
 transitionMatrix <- matrix(rep(1/numStates, numStates*numStates), nrow = numStates)
 
-#using k-means clustering, estimate initial mu and sigma values for the emission matrix
+#using k-means clustering, estimate initial mu and variance values for the emission matrix
 kgap <- kmeans(trainGlobalActivePower,5,iter.max=10)
 muinit <- kgap$centers
 varinit = numeric(numStates)
