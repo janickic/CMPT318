@@ -139,8 +139,8 @@ if(testOnValidation){
 if(!testOnValidation){
   #testDataset <- read_csv("C:\\Users\\Trevor\\Google Drive\\School\\SFU\\Year 4\\Summer 2017\\CMPT 318\\Project\\CMPT318\\data\\test1.txt")
   # testDataset <- read_csv("C:\\Users\\Evan Chisholm\\Desktop\\CMPT318\\train.txt")
-  trainDataset <-read_csv("/home/heather/Code/cmpt-318/test1.txt")
-  #trainDataset <-read_csv("/home/heather/Code/cmpt-318/test2.txt")
+  testDataset <-read_csv("/home/heather/Code/cmpt-318/test2.txt")
+  #testDataset <-read_csv("/home/heather/Code/cmpt-318/test2.txt")
   testGlobalActivePower <- testDataset$Global_active_power
   testGlobalActivePower <- testGlobalActivePower[!is.na(testGlobalActivePower)]
   testFormattedData <- formatMhsmm(data.frame(testGlobalActivePower))

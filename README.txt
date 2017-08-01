@@ -1,5 +1,3 @@
-Extract the data locally by unpacking courseproject_data.rar
+With the development of new technologies, there is an increasing landscape of cybersecurity threats. Research in cybersecurity is important to protect the assets with these increasing vulnerabilities. The overall purpose of this project is to analyse data from the U.S. power grid and to produce a way to detect any strange behaviour that could resemble in an attack. A Hidden Markov Model (HMM) was chosen to locate and determine anomalies in the data. The HMM was trained with training data and it was effectively able to locate anomalies in the test data. Therefore, we have been able to conclude that using a HMM is an effective way to detect anomalies in our data. Furthermore, these anomalies could be analyzed to determine whether they are cyber attacks or not.
 
-Mess around with R scripts in ./samplescripts, mainly simple HMM on univariate.R
-	I was unable to get R to play around nicely with files specified by relative paths, so you will need to edit the import path when loading data after pulling a new commit to work on your local machine
-	
+Code used to run anomaly detection algorithms (both pointwise and collective anomaly detection) is located in AnomalyDetection.R . Code found in dataanalysis and samplescripts was also used in experimentation to help determine initial parameters.
